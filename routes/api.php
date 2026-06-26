@@ -1,0 +1,23 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+
+// =========================================================================
+// API Admin — 后台 API（🇨🇳 部署）
+// =========================================================================
+
+require __DIR__ . '/sync.php';
+
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::post('login', [\App\Http\Controllers\Admin\AuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::apiResource('products', \App\Http\Controllers\Admin\ProductController::class);
+        Route::post('products/batch-import', [\App\Http\Controllers\Admin\ProductController::class, 'batchImport']);
+        Route::get('orders', [\App\Http\Controllers\Admin\OrderController::class, 'index']);
+        Route::get('orders/{id}', [\App\Http\Controllers\Admin\OrderController::class, 'show']);
+        Route::put('orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
+        Route::get('settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
+        Route::put('settings', [\App\Http\Controllers\Admin\SettingController::class, 'update']);
+    });
+});

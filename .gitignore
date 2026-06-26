@@ -4,3 +4,4 @@ vendor/
 storage/
 *.log
 .DS_Store
+vendor/

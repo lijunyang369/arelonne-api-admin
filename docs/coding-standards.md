@@ -428,7 +428,7 @@ docs: 补充独立站架构方案文档
 
 ## 9. 适用范围
 
-本文规范适用于 `/var/www/hope/` 下所有代码文件：
+本文规范适用于 `/var/www/arelonne/` 下所有代码文件：
 
 - `api/` — Laravel PHP 后端
 - `web/` — Next.js TypeScript 前端

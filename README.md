@@ -1,6 +1,6 @@
-# api-admin — HOPE Admin API
+# api-admin — Arelonne Admin API（项目代号 HOPE）
 
-🇨🇳 阿里云部署。为后台管理系统提供商品管理、订单处理、配置管理。
+🇨🇳 阿里云部署。为 Arelonne 品牌后台管理系统提供商品管理、订单处理、配置管理。
 
 ## 路由
 
@@ -17,7 +17,7 @@
 
 ## 管理员
 
-`admin@hope.com` / `admin123456`
+`admin@arelonne.com` / `admin123456`
 
 ## 技术栈
 

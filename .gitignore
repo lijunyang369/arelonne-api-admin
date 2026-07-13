@@ -5,3 +5,7 @@ storage/
 *.log
 .DS_Store
 vendor/
+.phpunit.result.cache
+
+# Local seed data kept out of feature commits.
+database/seeders/ColorSeeder.php

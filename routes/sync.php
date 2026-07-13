@@ -6,6 +6,7 @@
  * 所有路由受 X-Sync-Key 头验证保护。
  */
 
+use App\Http\Controllers\Sync\ColorSyncController;
 use App\Http\Controllers\Sync\OrderSyncController;
 use App\Http\Controllers\Sync\ProductSyncController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,11 @@ Route::prefix('sync')->name('sync.')->middleware([
     Route::post('products', [ProductSyncController::class, 'store']);
     Route::delete('products/{id}', [ProductSyncController::class, 'destroy']);
     Route::post('products/{id}/variants', [ProductSyncController::class, 'syncVariants']);
+
+    // 颜色同步（🇨🇳 → 🇺🇸）
+    Route::post('colors', [ColorSyncController::class, 'store']);
+    Route::put('colors/{id}', [ColorSyncController::class, 'update']);
+    Route::delete('colors/{id}', [ColorSyncController::class, 'destroy']);
 
     // 订单同步（🇺🇸 → 🇨🇳）
     Route::post('orders', [OrderSyncController::class, 'store']);

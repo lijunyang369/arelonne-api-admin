@@ -14,6 +14,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('products', \App\Http\Controllers\Admin\ProductController::class);
         Route::post('products/batch-import', [\App\Http\Controllers\Admin\ProductController::class, 'batchImport']);
+        Route::apiResource('colors', \App\Http\Controllers\Admin\ColorController::class);
         Route::get('orders', [\App\Http\Controllers\Admin\OrderController::class, 'index']);
         Route::get('orders/{id}', [\App\Http\Controllers\Admin\OrderController::class, 'show']);
         Route::put('orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);

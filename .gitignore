@@ -7,5 +7,5 @@ storage/
 vendor/
 .phpunit.result.cache
 
-# Local seed data kept out of feature commits.
-database/seeders/ColorSeeder.php
+# 本地种子数据不入仓库。
+database/seeders/Local/

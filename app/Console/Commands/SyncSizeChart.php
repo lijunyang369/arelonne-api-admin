@@ -55,7 +55,7 @@ class SyncSizeChart extends Command
         // 4. Upsert variants（按 product_id + size 去重，不修改 stock）
         $created = 0;
         foreach ($data['sizes'] as $size) {
-            $variant = $product->variants()->updateOrCreate(
+            $variant = $product->variants()->firstOrCreate(
                 [
                     'size' => $size,
                 ],

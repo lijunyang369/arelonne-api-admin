@@ -12,11 +12,32 @@ class SizeChartValidator
 {
     /** @var array<int, string> 允许的测量维度 */
     private const ALLOWED_MEASURE_KEYS = [
-        'bust', 'waist', 'hip', 'length', 'sleeve', 'shoulder', 'inseam',
+        'bust', 'waist', 'hip', 'length', 'sleeve', 'shoulder', 'inseam', 'us',
     ];
 
     /** @var array<int, string> 允许的 unit 值 */
     private const ALLOWED_UNITS = ['cm', 'in'];
+
+    /**
+     * 校验测量值是否合法：正数或范围字符串（如 "76-82"）。
+     *
+     * @param  string  $key  测量维度 key（如 "bust"、"us"），用于区分 US 尺码标签允许零值
+     */
+    private function isValidMeasurement(mixed $value, string $key): bool
+    {
+        // 非 US 字段只允许正数；US 尺码标签（如 "00"）允许 >= 0
+        if (is_numeric($value)) {
+            $min = $key === 'us' ? 0 : 0.01;
+            return (float) $value >= $min;
+        }
+
+        if (is_string($value) && preg_match('/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/', $value, $m)) {
+            // 校验范围下限 <= 上限
+            return (float) $m[1] <= (float) $m[2];
+        }
+
+        return false;
+    }
 
     /**
      * 校验 JSON 数据。
@@ -67,9 +88,9 @@ class SizeChartValidator
                     );
                 }
 
-                if (! is_numeric($value) || $value <= 0) {
+                if (! $this->isValidMeasurement($value, $key)) {
                     throw new \InvalidArgumentException(
-                        "size_chart.{$sizeLabel}.{$key} 必须为正数。"
+                        "size_chart.{$sizeLabel}.{$key} 必须为正数或范围字符串（如 76-82）。"
                     );
                 }
             }

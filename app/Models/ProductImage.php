@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ProductImage extends Model
 {
     protected $fillable = [
-        'product_id', 'product_variant_id', 'url',
+        'product_id', 'product_skc_id', 'url',
         'alt', 'sort', 'is_primary',
     ];
 
@@ -29,10 +29,10 @@ class ProductImage extends Model
     }
 
     /**
-     * 所属变体（可为空，表示通用图片）。
+     * 所属 SKC（可为空，表示通用图片）。
      */
-    public function variant(): BelongsTo
+    public function skc(): BelongsTo
     {
-        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+        return $this->belongsTo(ProductSkc::class, 'product_skc_id');
     }
 }

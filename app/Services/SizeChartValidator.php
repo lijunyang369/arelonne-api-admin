@@ -43,7 +43,7 @@ class SizeChartValidator
      * 校验 JSON 数据。
      *
      * @param  array  $json  已 json_decode 的关联数组
-     * @return array  ['sizes' => string[], 'size_chart' => array]
+     * @return array  ['colors' => string[], 'sizes' => string[], 'size_chart' => array]
      *
      * @throws \InvalidArgumentException  校验失败
      */
@@ -59,16 +59,27 @@ class SizeChartValidator
             throw new \InvalidArgumentException('缺少 "size_chart" 字段或为空。');
         }
 
+        // 3. colors 可选，提供时必须为非空字符串数组
+        $colors = $json['colors'] ?? [];
+        if (! is_array($colors)) {
+            throw new \InvalidArgumentException('"colors" 字段必须为数组。');
+        }
+        foreach ($colors as $i => $color) {
+            if (! is_string($color) || trim($color) === '') {
+                throw new \InvalidArgumentException("\"colors\" 第 " . ($i + 1) . " 个元素必须为非空字符串。");
+            }
+        }
+
         $sizeChart = $json['size_chart'];
 
-        // 3. unit 校验
+        // 4. unit 校验
         if (empty($sizeChart['unit']) || ! in_array($sizeChart['unit'], self::ALLOWED_UNITS, true)) {
             throw new \InvalidArgumentException(
                 'size_chart.unit 必须为 "' . implode('" 或 "', self::ALLOWED_UNITS) . '"'
             );
         }
 
-        // 4. 每个尺码标签下的测量 key 白名单校验
+        // 5. 每个尺码标签下的测量 key 白名单校验
         foreach ($sizeChart as $sizeLabel => $measurements) {
             if ($sizeLabel === 'unit') {
                 continue;
@@ -97,6 +108,7 @@ class SizeChartValidator
         }
 
         return [
+            'colors'     => $colors,
             'sizes'      => $json['sizes'],
             'size_chart' => $sizeChart,
         ];

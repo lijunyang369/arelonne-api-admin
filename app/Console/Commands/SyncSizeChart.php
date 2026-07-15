@@ -52,25 +52,32 @@ class SyncSizeChart extends Command
         $product = Product::findOrFail($productId);
         $this->info("商品: #{$product->id} {$product->name}");
 
-        // 4. Upsert variants（按 product_id + size 去重，不修改 stock）
+        // 4. Upsert variants（按 product_id + color + size 去重，不修改 stock）
+        $colors = $data['colors'] ?? [''];
+        if (empty($colors)) {
+            $colors = [''];
+        }
+
         $created = 0;
-        foreach ($data['sizes'] as $size) {
-            $variant = $product->variants()->firstOrCreate(
-                [
-                    'size' => $size,
-                ],
-                [
-                    'sku'   => $product->slug . '-' . $size,
-                    'color' => null,
-                    'price' => null,      // 使用 product base_price
-                    // stock 不写入
-                ]
-            );
-            if ($variant->wasRecentlyCreated) {
-                $created++;
+        foreach ($colors as $color) {
+            foreach ($data['sizes'] as $size) {
+                $variant = $product->variants()->firstOrCreate(
+                    [
+                        'color' => $color,
+                        'size'  => $size,
+                    ],
+                    [
+                        'sku'   => $product->slug . '-' . ($color ? $color . '-' : '') . $size,
+                        'price' => null,      // 使用 product base_price
+                        // stock 不写入
+                    ]
+                );
+                if ($variant->wasRecentlyCreated) {
+                    $created++;
+                }
             }
         }
-        $this->info("尺码标签: {$created} 个新增（共 " . count($data['sizes']) . " 个）");
+        $this->info("变体: {$created} 个新增（共 " . (count($colors) * count($data['sizes'])) . " 个组合）");
 
         // 5. 写入 meta.size_chart
         $product->update([

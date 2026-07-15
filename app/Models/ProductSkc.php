@@ -5,19 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ProductVariant extends Model
+class ProductSkc extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
-        'product_id', 'sku', 'color', 'size',
-        'price', 'stock', 'image', 'status',
+        'product_id', 'color', 'color_hex',
+        'slug', 'status', 'sort',
     ];
 
     protected function casts(): array
     {
         return [
-            'price' => 'decimal:2',
-            'stock' => 'integer',
+            'sort' => 'integer',
         ];
     }
 
@@ -29,5 +31,11 @@ class ProductVariant extends Model
         return $this->belongsTo(Product::class);
     }
 
-    // images 已迁移到 ProductSkc，variant 不再直接持有图片
+    /**
+     * SKC 下的图片。
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class, 'product_skc_id')->orderBy('sort')->orderBy('id');
+    }
 }

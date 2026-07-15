@@ -12,6 +12,13 @@ class Category extends Model
         'name', 'slug', 'parent_id', 'sort', 'status',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'sort' => 'integer',
+        ];
+    }
+
     /**
      * 子分类。
      */

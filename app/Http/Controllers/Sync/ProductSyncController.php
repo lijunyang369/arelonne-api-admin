@@ -89,8 +89,8 @@ class ProductSyncController extends Controller
         foreach ($data['variants'] as $v) {
             $product->variants()->create([
                 'sku'   => $v['sku'],
-                'color' => $v['color'] ?? null,
-                'size'  => $v['size'] ?? null,
+                'color' => $v['color'] ?? '',
+                'size'  => $v['size'] ?? '',
                 'price' => $v['price'] ?? null,
                 'stock' => $v['stock'] ?? 0,
                 'image' => $v['image'] ?? null,

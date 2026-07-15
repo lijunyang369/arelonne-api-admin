@@ -10,6 +10,11 @@ class Setting extends Model
         'key', 'value', 'type', 'group',
     ];
 
+    protected function casts(): array
+    {
+        return [];
+    }
+
     /**
      * 按 key 获取配置值，自动根据 type 转换。
      */

@@ -80,7 +80,16 @@ class SyncProductImages extends Command
         foreach ($variants as $v) {
             $variantColor[$v['id']] = $v['option1'];
         }
-        $this->knownColors = array_values(array_unique($variantColor));
+        // 保持 Shopify variants 原始顺序（第一个颜色 = 主色/默认色）
+        $seen = [];
+        $this->knownColors = [];
+        foreach ($variants as $v) {
+            $c = $v['option1'];
+            if (! isset($seen[$c])) {
+                $seen[$c] = true;
+                $this->knownColors[] = $c;
+            }
+        }
         if (empty($this->knownColors)) {
             $this->error('无法从 variants 中提取颜色信息。');
             return self::FAILURE;
@@ -263,6 +272,16 @@ class SyncProductImages extends Command
         if (! $pushed) {
             $this->error('推送 Store 失败！请检查 Store 服务状态和日志。');
             return self::FAILURE;
+        }
+
+        // 9. 设置主色 SKC（push 后执行，避免 FK cascade null）
+        $primaryColor = $this->knownColors[0] ?? null;
+        if ($primaryColor) {
+            $primarySkc = $product->skcs()->where('color', $primaryColor)->first();
+            if ($primarySkc) {
+                $product->update(['primary_skc_id' => $primarySkc->id]);
+                $this->line("主色: {$primaryColor} (SKC #{$primarySkc->id})");
+            }
         }
 
         $this->info('完成。');

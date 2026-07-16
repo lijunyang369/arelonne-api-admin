@@ -14,7 +14,7 @@ class Product extends Model
     protected $fillable = [
         'name', 'slug', 'description', 'category_id',
         'base_price', 'sale_price', 'cost_price',
-        'status', 'sort', 'meta',
+        'primary_skc_id', 'status', 'sort', 'meta',
     ];
 
     protected function casts(): array
@@ -42,6 +42,14 @@ class Product extends Model
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    /**
+     * 主色 SKC（商品封面/默认颜色）。
+     */
+    public function primarySkc(): BelongsTo
+    {
+        return $this->belongsTo(ProductSkc::class, 'primary_skc_id');
     }
 
     /**

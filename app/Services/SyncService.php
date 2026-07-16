@@ -36,12 +36,15 @@ class SyncService
         }
 
         try {
-            $response = Http::timeout(10)
+            $http = Http::timeout(10)
                 ->acceptJson()
-                ->withHeaders(['X-Sync-Key' => config('app.key')])
-                ->send($method, "{$baseUrl}/api/sync{$endpoint}", [
-                    'json' => $payload,
-                ]);
+                ->withHeaders(['X-Sync-Key' => config('app.key')]);
+
+            $response = match (strtoupper($method)) {
+                'DELETE' => $http->delete("{$baseUrl}/api/sync{$endpoint}", $payload),
+                'PUT'    => $http->put("{$baseUrl}/api/sync{$endpoint}", $payload),
+                default  => $http->post("{$baseUrl}/api/sync{$endpoint}", $payload),
+            };
 
             if ($response->successful()) {
                 Log::info("[Sync] ✓ {$method} {$endpoint} → {$target}");

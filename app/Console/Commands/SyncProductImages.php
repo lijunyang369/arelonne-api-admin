@@ -26,7 +26,8 @@ class SyncProductImages extends Command
 {
     protected $signature = 'sync:product-images
                             {url : oglmove 商品页 URL}
-                            {productId : Arelonne 本地商品 ID}';
+                            {productId : Arelonne 本地商品 ID}
+                            {--with-imagegen : 同步后调用 Codex imagegen 处理图片（换脸+去图标+统一背景）}';
 
     protected $description = '从 oglmove Shopify API 自动同步 SKC 颜色图片';
 
@@ -282,6 +283,13 @@ class SyncProductImages extends Command
                 $product->update(['primary_skc_id' => $primarySkc->id]);
                 $this->line("主色: {$primaryColor} (SKC #{$primarySkc->id})");
             }
+        }
+
+        // 9. 可选：Codex imagegen 后处理
+        if ($this->option('with-imagegen')) {
+            $this->call('sync:process-images', [
+                'productId' => $product->id,
+            ]);
         }
 
         $this->info('完成。');

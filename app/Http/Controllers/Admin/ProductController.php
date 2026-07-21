@@ -16,14 +16,16 @@ class ProductController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Product::withTrashed()
-            ->with(['category', 'images']);
+        $query = Product::with(['category', 'images']);
 
         if ($search = $request->get('search')) {
             $query->where('name', 'like', "%{$search}%");
         }
         if ($status = $request->get('status')) {
             $query->where('status', $status);
+        }
+        if ($categoryId = $request->get('category_id')) {
+            $query->where('category_id', $categoryId);
         }
 
         $products = $query->orderBy('id', 'desc')->paginate($request->get('per_page', 20));

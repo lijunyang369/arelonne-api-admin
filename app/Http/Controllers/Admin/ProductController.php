@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Models\ProductImage;
 use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,18 @@ class ProductController extends Controller
         }
 
         $products = $query->orderBy('id', 'desc')->paginate($request->get('per_page', 20));
+
+        // 列表页仅展示主 SKC 的图片（无 primary_skc_id 时保留全部，向后兼容）
+        $products->getCollection()->transform(function (Product $product) {
+            if ($product->relationLoaded('images') && $product->primary_skc_id) {
+                $filtered = $product->images->filter(function (ProductImage $img) use ($product) {
+                    return $img->product_skc_id === $product->primary_skc_id
+                        || is_null($img->product_skc_id);
+                })->values();
+                $product->setRelation('images', $filtered);
+            }
+            return $product;
+        });
 
         return response()->json([
             'data' => ProductResource::collection($products),

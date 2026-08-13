@@ -3,24 +3,62 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
+use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SettingController extends Controller
 {
     /**
-     * 获取站点设置。
+     * 获取站点设置（可按 group 过滤）。
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(['message' => 'Not implemented'], 200);
+        $group = $request->query('group');
+
+        $query = Setting::query();
+        if ($group) {
+            $query->where('group', $group);
+        }
+
+        $settings = $query->get()->map(fn (Setting $s) => [
+            'key'   => $s->key,
+            'value' => $s->value,
+            'type'  => $s->type,
+            'group' => $s->group,
+        ])->values();
+
+        return response()->json(['data' => $settings]);
     }
 
     /**
-     * 更新站点设置。
+     * 更新站点设置（upsert）并推送到 Store。
      */
     public function update(Request $request): JsonResponse
     {
-        return response()->json(['message' => 'Not implemented'], 200);
+        $data = $request->validate([
+            'settings'           => 'required|array|min:1',
+            'settings.*.key'     => 'required|string|max:255',
+            'settings.*.value'   => 'required',
+        ]);
+
+        foreach ($data['settings'] as $item) {
+            $key   = $item['key'];
+            $value = $item['value'];
+            // group 取 key 前缀（如 "shipping.fee" → "shipping"）
+            $group = str_contains($key, '.') ? explode('.', $key)[0] : 'general';
+            $type  = is_numeric($value) ? 'number' : 'string';
+
+            Setting::updateOrCreate(
+                ['key' => $key],
+                ['value' => (string) $value, 'type' => $type, 'group' => $group]
+            );
+        }
+
+        // 推送到 🇺🇸 Store（失败不阻塞保存）
+        SyncService::push('/settings', ['settings' => $data['settings']], 'POST', 'store');
+
+        return response()->json(['data' => ['message' => 'Settings updated']]);
     }
 }

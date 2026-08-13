@@ -43,6 +43,16 @@ class SettingController extends Controller
             'settings.*.value'   => 'required',
         ]);
 
+        // 运费设置必须为非负数（key 前缀 shipping. 的数值配置）
+        foreach ($data['settings'] as $item) {
+            if (str_starts_with($item['key'], 'shipping.') && (! is_numeric($item['value']) || (float) $item['value'] < 0)) {
+                return response()->json([
+                    'message' => 'Shipping settings must be non-negative numbers.',
+                    'errors'  => [$item['key'] => ['Shipping settings must be non-negative numbers.']],
+                ], 422);
+            }
+        }
+
         foreach ($data['settings'] as $item) {
             $key   = $item['key'];
             $value = $item['value'];

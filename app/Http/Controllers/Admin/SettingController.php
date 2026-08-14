@@ -59,13 +59,25 @@ class SettingController extends Controller
             'settings.*.value'   => 'required',
         ]);
 
-        // 运费设置必须为非负数（key 前缀 shipping. 的数值配置）
+        // 先整体校验（scalar 守卫 + 运费非负），全部通过后才写入，避免部分写入
         foreach ($data['settings'] as $item) {
-            if (str_starts_with($item['key'], 'shipping.') &&
-                (! is_numeric($item['value']) || ! is_finite((float) $item['value']) || (float) $item['value'] < 0 || (float) $item['value'] > 100000)) {
+            $key   = $item['key'];
+            $value = $item['value'];
+
+            // 值仅支持标量（字符串/数字/布尔），数组对象直接拒绝
+            if (! is_scalar($value)) {
+                return response()->json([
+                    'message' => 'Setting values must be scalar.',
+                    'errors'  => [$key => ['Setting values must be scalar.']],
+                ], 422);
+            }
+
+            // 运费设置必须为非负数（key 前缀 shipping. 的数值配置）
+            if (str_starts_with($key, 'shipping.') &&
+                (! is_numeric($value) || ! is_finite((float) $value) || (float) $value < 0 || (float) $value > 100000)) {
                 return response()->json([
                     'message' => 'Shipping settings must be non-negative numbers.',
-                    'errors'  => [$item['key'] => ['Shipping settings must be non-negative numbers.']],
+                    'errors'  => [$key => ['Shipping settings must be non-negative numbers.']],
                 ], 422);
             }
         }

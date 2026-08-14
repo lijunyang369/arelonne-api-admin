@@ -87,11 +87,11 @@ class SettingController extends Controller
             $value = $item['value'];
             // group 取 key 前缀（如 "shipping.fee" → "shipping"）
             $group = str_contains($key, '.') ? explode('.', $key)[0] : 'general';
-            $type  = is_numeric($value) ? 'number' : 'string';
+            $type  = is_bool($value) ? 'boolean' : (is_numeric($value) ? 'number' : 'string');
 
             Setting::updateOrCreate(
                 ['key' => $key],
-                ['value' => (string) $value, 'type' => $type, 'group' => $group]
+                ['value' => is_bool($value) ? ($value ? '1' : '0') : (string) $value, 'type' => $type, 'group' => $group]
             );
         }
 

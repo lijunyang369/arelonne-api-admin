@@ -82,6 +82,9 @@ class SettingController extends Controller
             }
         }
 
+        // 收集规范化后的行（与 DB 写入一致），用于推送 Store
+        $synced = [];
+
         foreach ($data['settings'] as $item) {
             $key   = $item['key'];
             $value = $item['value'];
@@ -89,14 +92,18 @@ class SettingController extends Controller
             $group = str_contains($key, '.') ? explode('.', $key)[0] : 'general';
             $type  = is_bool($value) ? 'boolean' : (is_numeric($value) ? 'number' : 'string');
 
+            // 规范化存储值：布尔 → '1'/'0'，其余 → 字符串
+            $storedValue = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+            $synced[] = ['key' => $key, 'value' => $storedValue, 'type' => $type];
+
             Setting::updateOrCreate(
                 ['key' => $key],
-                ['value' => is_bool($value) ? ($value ? '1' : '0') : (string) $value, 'type' => $type, 'group' => $group]
+                ['value' => $storedValue, 'type' => $type, 'group' => $group]
             );
         }
 
-        // 推送到 🇺🇸 Store（失败不阻塞保存）
-        SyncService::push('/settings', ['settings' => $data['settings']], 'POST', 'store');
+        // 推送到 🇺🇸 Store（失败不阻塞保存）— 推送与 DB 一致的规范化值
+        SyncService::push('/settings', ['settings' => $synced], 'POST', 'store');
 
         return response()->json(['data' => ['message' => 'Settings updated']]);
     }

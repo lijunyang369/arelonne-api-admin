@@ -33,8 +33,8 @@ class SettingController extends Controller
 
         // 运费设置的默认值（记录缺失时补充，与 Store 端回退一致）
         $shippingDefaults = [
-            ['key' => 'shipping.free_threshold', 'value' => '50', 'type' => 'number', 'group' => 'shipping'],
-            ['key' => 'shipping.fee', 'value' => '5.99', 'type' => 'number', 'group' => 'shipping'],
+            ['key' => 'shipping.free_threshold', 'value' => '69', 'type' => 'number', 'group' => 'shipping'],
+            ['key' => 'shipping.fee', 'value' => '8.99', 'type' => 'number', 'group' => 'shipping'],
         ];
 
         if (! $group || $group === 'shipping') {

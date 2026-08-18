@@ -15,6 +15,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::apiResource('products', \App\Http\Controllers\Admin\ProductController::class);
         Route::post('products/batch-import', [\App\Http\Controllers\Admin\ProductController::class, 'batchImport']);
         Route::apiResource('colors', \App\Http\Controllers\Admin\ColorController::class);
+        // Controller 无 show 方法,排除以免 GET /size-options/{id} 500
+        Route::apiResource('size-options', \App\Http\Controllers\Admin\SizeOptionController::class)->except('show');
         Route::get('orders', [\App\Http\Controllers\Admin\OrderController::class, 'index']);
         Route::get('orders/{id}', [\App\Http\Controllers\Admin\OrderController::class, 'show']);
         Route::put('orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);

@@ -127,6 +127,23 @@ class ProductController extends Controller
             $product->update($data);
         });
 
+        // SKC/图片快照替换（仅当请求携带 skcs 时；上传组件/手工填写产生的 URL 直接落库）
+        if ($request->has('skcs')) {
+            $validated = $request->validate([
+                'skcs'                       => ['array'],
+                'skcs.*.color'               => ['required', 'string'],
+                'skcs.*.color_hex'           => ['nullable', 'string'],
+                'skcs.*.slug'                => ['required', 'string'],
+                'skcs.*.images'              => ['array'],
+                'skcs.*.images.*.url'        => ['required', 'string'],
+                'skcs.*.images.*.alt'        => ['nullable', 'string'],
+                'skcs.*.images.*.sort'       => ['nullable', 'integer'],
+                'skcs.*.images.*.is_primary' => ['nullable', 'boolean'],
+            ]);
+
+            app(\App\Services\ProductSkuImageService::class)->replaceFromForm($product, $validated['skcs']);
+        }
+
         return response()->json([
             'data' => new ProductResource($product->load(['category'])),
         ]);

@@ -10,7 +10,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('login', [\App\Http\Controllers\Admin\AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('categories', [\App\Http\Controllers\Admin\CategoryController::class, 'index']);
+        Route::apiResource('categories', \App\Http\Controllers\Admin\CategoryController::class);
         Route::apiResource('products', \App\Http\Controllers\Admin\ProductController::class);
         Route::post('products/batch-import', [\App\Http\Controllers\Admin\ProductController::class, 'batchImport']);
         Route::apiResource('colors', \App\Http\Controllers\Admin\ColorController::class);

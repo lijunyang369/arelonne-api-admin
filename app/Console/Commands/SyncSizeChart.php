@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\Product;
 use App\Services\SizeChartValidator;
-use App\Services\SyncService;
 use Illuminate\Console\Command;
 
 /**
@@ -18,7 +17,7 @@ class SyncSizeChart extends Command
                             {productId : 本地商品 ID}
                             {file : Codex 输出的 size-data.json 文件路径}';
 
-    protected $description = '从 JSON 文件导入商品尺码标签和测量数据，并推送到 Store';
+    protected $description = '从 JSON 文件导入商品尺码标签和测量数据';
 
     /**
      * 执行同步。
@@ -86,38 +85,6 @@ class SyncSizeChart extends Command
             ]),
         ]);
         $this->info('size_chart 已写入 meta');
-
-        // 6. 推送到 Store
-        $this->info('推送至 Store...');
-
-        // 6a. 推送 product（meta 变更）
-        SyncService::pushAsync(
-            "/products/{$product->id}",
-            $product->only([
-                'id', 'name', 'slug', 'description', 'base_price',
-                'sale_price', 'status', 'sort', 'meta',
-            ]),
-            'PUT'
-        );
-
-        // 6b. 推送 variants（全量：收集所有 variant 后发送）
-        $allVariants = $product->variants()->get()->map(fn ($v) => [
-            'sku'   => $v->sku,
-            'color' => $v->color,
-            'size'  => $v->size,
-            'price' => $v->price,
-            'stock' => $v->stock,
-            'image' => $v->image,
-        ])->toArray();
-
-        SyncService::pushAsync(
-            "/products/{$product->id}/variants",
-            [
-                'product_id' => $product->id,
-                'variants'   => $allVariants,
-            ]
-        );
-
         $this->info('完成。');
         return self::SUCCESS;
     }

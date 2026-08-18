@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ColorResource;
 use App\Models\Color;
-use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -53,9 +52,6 @@ class ColorController extends Controller
 
         $color = Color::create($validated);
 
-        // 同步到 Store
-        SyncService::pushAsync('/colors', $color->toArray(), 'POST', 'store');
-
         return response()->json([
             'data' => new ColorResource($color),
         ], 201);
@@ -87,9 +83,6 @@ class ColorController extends Controller
 
         $color->update($validated);
 
-        // 同步到 Store
-        SyncService::pushAsync('/colors/' . $color->id, $color->toArray(), 'PUT', 'store');
-
         return response()->json([
             'data' => new ColorResource($color),
         ]);
@@ -101,9 +94,6 @@ class ColorController extends Controller
     public function destroy(Color $color): JsonResponse
     {
         $color->delete();
-
-        // 同步删除到 Store
-        SyncService::pushAsync('/colors/' . $color->id, [], 'DELETE', 'store');
 
         return response()->json(null, 204);
     }

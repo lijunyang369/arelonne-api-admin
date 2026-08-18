@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\ProductImage;
-use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -56,8 +55,6 @@ class ProductController extends Controller
 
     /**
      * 新增商品。
-     *
-     * 写入本地 DB 后，推送到 🇺🇸 Store。
      */
     public function store(Request $request): JsonResponse
     {
@@ -75,12 +72,6 @@ class ProductController extends Controller
         ]);
 
         $product = Product::create($data);
-
-        // 推送到 🇺🇸 Store
-        SyncService::pushAsync('/products', $product->only([
-            'id', 'name', 'slug', 'description', 'base_price',
-            'sale_price', 'status', 'sort', 'meta',
-        ]));
 
         return response()->json([
             'data' => new ProductResource($product->load(['category'])),
@@ -103,8 +94,6 @@ class ProductController extends Controller
 
     /**
      * 更新商品。
-     *
-     * 写入本地 DB 后，推送到 🇺🇸 Store。
      */
     public function update(Request $request, int $id): JsonResponse
     {
@@ -125,26 +114,18 @@ class ProductController extends Controller
 
         $product->update($data);
 
-        // 推送到 🇺🇸 Store
-        SyncService::pushAsync("/products/{$product->id}", $product->only([
-            'id', 'name', 'slug', 'description', 'base_price',
-            'sale_price', 'status', 'sort', 'meta',
-        ]), 'PUT');
-
         return response()->json([
             'data' => new ProductResource($product->load(['category'])),
         ]);
     }
 
     /**
-     * 软删除商品，并通知 🇺🇸 Store。
+     * 软删除商品。
      */
     public function destroy(int $id): JsonResponse
     {
         $product = Product::withTrashed()->findOrFail($id);
         $product->delete();
-
-        SyncService::pushAsync("/products/{$id}", [], 'DELETE');
 
         return response()->json(null, 204);
     }
@@ -169,12 +150,6 @@ class ProductController extends Controller
         foreach ($data['products'] as $item) {
             $product = Product::create($item);
             $created[] = $product->id;
-
-            // 逐个推送
-            SyncService::pushAsync('/products', $product->only([
-                'id', 'name', 'slug', 'description', 'base_price',
-                'sale_price', 'status', 'sort', 'meta',
-            ]));
         }
 
         return response()->json([

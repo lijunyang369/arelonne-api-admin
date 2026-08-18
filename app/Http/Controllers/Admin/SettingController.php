@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
-use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -49,7 +48,7 @@ class SettingController extends Controller
     }
 
     /**
-     * 更新站点设置（upsert）并推送到 Store。
+     * 更新站点设置（upsert）。
      */
     public function update(Request $request): JsonResponse
     {
@@ -82,9 +81,6 @@ class SettingController extends Controller
             }
         }
 
-        // 收集规范化后的行（与 DB 写入一致），用于推送 Store
-        $synced = [];
-
         foreach ($data['settings'] as $item) {
             $key   = $item['key'];
             $value = $item['value'];
@@ -94,16 +90,12 @@ class SettingController extends Controller
 
             // 规范化存储值：布尔 → '1'/'0'，其余 → 字符串
             $storedValue = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
-            $synced[] = ['key' => $key, 'value' => $storedValue, 'type' => $type];
 
             Setting::updateOrCreate(
                 ['key' => $key],
                 ['value' => $storedValue, 'type' => $type, 'group' => $group]
             );
         }
-
-        // 推送到 🇺🇸 Store（失败不阻塞保存）— 推送与 DB 一致的规范化值
-        SyncService::push('/settings', ['settings' => $synced], 'POST', 'store');
 
         return response()->json(['data' => ['message' => 'Settings updated']]);
     }

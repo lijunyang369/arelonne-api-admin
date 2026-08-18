@@ -6,8 +6,6 @@ use Illuminate\Support\Facades\Route;
 // API Admin — 后台 API（🇨🇳 部署）
 // =========================================================================
 
-require __DIR__ . '/sync.php';
-
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('login', [\App\Http\Controllers\Admin\AuthController::class, 'login']);
 

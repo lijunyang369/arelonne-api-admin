@@ -7,6 +7,7 @@
  */
 
 use App\Http\Controllers\Sync\ColorSyncController;
+use App\Http\Controllers\Sync\ContactSyncController;
 use App\Http\Controllers\Sync\OrderSyncController;
 use App\Http\Controllers\Sync\ProductSyncController;
 use Illuminate\Support\Facades\Route;
@@ -28,4 +29,7 @@ Route::prefix('sync')->name('sync.')->middleware([
     // 订单同步（🇺🇸 → 🇨🇳）
     Route::post('orders', [OrderSyncController::class, 'store']);
     Route::put('orders/{id}/status', [OrderSyncController::class, 'updateStatus']);
+
+    // 留言同步（🇺🇸 → 🇨🇳）
+    Route::post('contacts', [ContactSyncController::class, 'store']);
 });

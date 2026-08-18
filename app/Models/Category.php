@@ -20,11 +20,11 @@ class Category extends Model
     }
 
     /**
-     * 子分类。
+     * 子分类(按 sort,id 排序,树形展示稳定)。
      */
     public function children(): HasMany
     {
-        return $this->hasMany(Category::class, 'parent_id');
+        return $this->hasMany(Category::class, 'parent_id')->orderBy('sort')->orderBy('id');
     }
 
     /**

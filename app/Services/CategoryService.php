@@ -105,6 +105,8 @@ class CategoryService
     /**
      * 商品关联校验:新建或变更分类时必须为 active 叶子;
      * 传入当前 category_id 且与目标一致时,允许保留(即使已停用)。
+     * 并发竞态由行锁(lockForUpdate,须在调用方事务内持有)+ 调用方事务保证;
+     * 真并发集成测试受 sqlite :memory: 限制未覆盖(spec §9 项以代码注释显式接受)。
      */
     public function assertAssignableLeaf(?int $categoryId, ?int $currentCategoryId = null): void
     {
@@ -115,7 +117,7 @@ class CategoryService
             return; // 未变更,允许保留
         }
 
-        $category = Category::find($categoryId);
+        $category = Category::whereKey($categoryId)->lockForUpdate()->first();
         if ($category === null) {
             throw ValidationException::withMessages(['category_id' => '分类不存在']);
         }

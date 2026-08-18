@@ -65,4 +65,21 @@ class ProductCategoryContractTest extends TestCase
         ]);
         $res->assertUnprocessable();
     }
+
+    /**
+     * guard 与写入同一事务:guard 抛出后商品不得落库。
+     * 真并发竞态(PHPUnit + sqlite :memory:)无法可靠复现,此处验证事务包裹下
+     * 失败路径的原子性;行锁防并发由 CategoryService::assertAssignableLeaf 注释显式承担。
+     */
+    public function test_guard_uses_transaction(): void
+    {
+        $inactive = Category::factory()->create(['status' => 'inactive', 'parent_id' => null]);
+
+        $res = $this->postJson('/api/admin/products', [
+            'name' => 'X', 'slug' => 'guarded-product', 'category_id' => $inactive->id,
+            'base_price' => 10, 'status' => 'active',
+        ]);
+        $res->assertUnprocessable();
+        $this->assertDatabaseMissing('products', ['slug' => 'guarded-product']);
+    }
 }

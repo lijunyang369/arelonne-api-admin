@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Services\CategoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
@@ -71,11 +73,11 @@ class ProductController extends Controller
             'meta'        => 'nullable|array',
         ]);
 
-        app(\App\Services\CategoryService::class)->assertAssignableLeaf(
-            $data['category_id'] ?? null,
-        );
-
-        $product = Product::create($data);
+        // guard 与写入同一事务:行锁在提交前持续持有,防止「建商品 + 建子分类」并发竞态
+        $product = DB::transaction(function () use ($data) {
+            app(CategoryService::class)->assertAssignableLeaf($data['category_id'] ?? null);
+            return Product::create($data);
+        });
 
         return response()->json([
             'data' => new ProductResource($product->load(['category'])),
@@ -116,12 +118,14 @@ class ProductController extends Controller
             'meta'        => 'nullable|array',
         ]);
 
-        app(\App\Services\CategoryService::class)->assertAssignableLeaf(
-            $data['category_id'] ?? null,
-            $product->category_id,
-        );
-
-        $product->update($data);
+        // guard 与写入同一事务:行锁在提交前持续持有,防止「改挂分类 + 建子分类」并发竞态
+        DB::transaction(function () use ($product, $data) {
+            app(CategoryService::class)->assertAssignableLeaf(
+                $data['category_id'] ?? null,
+                $product->category_id,
+            );
+            $product->update($data);
+        });
 
         return response()->json([
             'data' => new ProductResource($product->load(['category'])),
@@ -157,10 +161,11 @@ class ProductController extends Controller
 
         $created = [];
         foreach ($data['products'] as $item) {
-            app(\App\Services\CategoryService::class)->assertAssignableLeaf(
-                $item['category_id'] ?? null,
-            );
-            $product = Product::create($item);
+            // 每个 item 独立事务:guard 与写入同事务,行锁防并发竞态
+            $product = DB::transaction(function () use ($item) {
+                app(CategoryService::class)->assertAssignableLeaf($item['category_id'] ?? null);
+                return Product::create($item);
+            });
             $created[] = $product->id;
         }
 

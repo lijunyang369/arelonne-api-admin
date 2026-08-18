@@ -10,7 +10,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('login', [\App\Http\Controllers\Admin\AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::apiResource('categories', \App\Http\Controllers\Admin\CategoryController::class);
+        // Controller 无 show 方法,排除以免 GET /categories/{id} 500
+        Route::apiResource('categories', \App\Http\Controllers\Admin\CategoryController::class)->except('show');
         Route::apiResource('products', \App\Http\Controllers\Admin\ProductController::class);
         Route::post('products/batch-import', [\App\Http\Controllers\Admin\ProductController::class, 'batchImport']);
         Route::apiResource('colors', \App\Http\Controllers\Admin\ColorController::class);

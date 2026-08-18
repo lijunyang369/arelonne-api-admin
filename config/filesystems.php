@@ -59,7 +59,11 @@ return [
         */
         'image' => [
             'driver' => env('IMAGE_DISK', 'local'),
-            'root' => env('IMAGE_LOCAL_ROOT', base_path('../web-store/public')),
+            // 注意：s3 驱动会把 root 当作 key 前缀（Flysystem S3 适配器语义），
+            // s3 模式下 root 必须为空，否则所有 key 被拼上本地路径前缀
+            'root' => env('IMAGE_DISK', 'local') === 's3'
+                ? ''
+                : env('IMAGE_LOCAL_ROOT', base_path('../web-store/public')),
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),

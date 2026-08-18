@@ -102,6 +102,31 @@ class CategoryService
     }
 
     /**
+     * 商品关联校验:新建或变更分类时必须为 active 叶子;
+     * 传入当前 category_id 且与目标一致时,允许保留(即使已停用)。
+     */
+    public function assertAssignableLeaf(?int $categoryId, ?int $currentCategoryId = null): void
+    {
+        if ($categoryId === null) {
+            return;
+        }
+        if ($currentCategoryId !== null && $categoryId === $currentCategoryId) {
+            return; // 未变更,允许保留
+        }
+
+        $category = Category::find($categoryId);
+        if ($category === null) {
+            throw ValidationException::withMessages(['category_id' => '分类不存在']);
+        }
+        if ($category->status !== 'active') {
+            throw ValidationException::withMessages(['category_id' => '只能关联启用中的分类']);
+        }
+        if ($category->children()->exists()) {
+            throw ValidationException::withMessages(['category_id' => '只能关联叶子分类']);
+        }
+    }
+
+    /**
      * 候选父分类资格检查(两级不变量):
      * 1. 父必须是根(自身 parent_id 为 null)
      * 2. 父不能是目标自身(自环)

@@ -71,6 +71,10 @@ class ProductController extends Controller
             'meta'        => 'nullable|array',
         ]);
 
+        app(\App\Services\CategoryService::class)->assertAssignableLeaf(
+            $data['category_id'] ?? null,
+        );
+
         $product = Product::create($data);
 
         return response()->json([
@@ -112,6 +116,11 @@ class ProductController extends Controller
             'meta'        => 'nullable|array',
         ]);
 
+        app(\App\Services\CategoryService::class)->assertAssignableLeaf(
+            $data['category_id'] ?? null,
+            $product->category_id,
+        );
+
         $product->update($data);
 
         return response()->json([
@@ -148,6 +157,9 @@ class ProductController extends Controller
 
         $created = [];
         foreach ($data['products'] as $item) {
+            app(\App\Services\CategoryService::class)->assertAssignableLeaf(
+                $item['category_id'] ?? null,
+            );
             $product = Product::create($item);
             $created[] = $product->id;
         }

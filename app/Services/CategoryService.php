@@ -54,7 +54,8 @@ class CategoryService
     {
         return DB::transaction(function () use ($category, $data) {
             // 锁序:目标与候选父的 id 升序加锁(先小后大),并发交叉更新也不会死锁
-            $parentId = $data['parent_id'] ?? $category->parent_id;
+            // 显式 parent_id:null 视为「升根」提交,须与「未提交」区分(array_key_exists)
+            $parentId = array_key_exists('parent_id', $data) ? $data['parent_id'] : $category->parent_id;
             $lockIds = array_values(array_unique(array_filter(
                 [$category->id, $parentId],
                 fn ($id) => $id !== null,

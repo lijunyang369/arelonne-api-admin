@@ -61,6 +61,17 @@ class CategoryCrudTest extends TestCase
         $res->assertUnprocessable()->assertJsonValidationErrors('parent_id');
     }
 
+    /** 子分类升根:显式 parent_id:null 必须生效(此前被当作未提交而静默失效) */
+    public function test_update_child_can_be_promoted_to_root(): void
+    {
+        $root = Category::factory()->create(['parent_id' => null]);
+        $child = Category::factory()->create(['parent_id' => $root->id]);
+
+        $res = $this->putJson("/api/admin/categories/{$child->id}", ['parent_id' => null]);
+        $res->assertOk();
+        $this->assertDatabaseHas('categories', ['id' => $child->id, 'parent_id' => null]);
+    }
+
     /** 两级不变量:有子分类的分类不能降级为子 */
     public function test_update_rejects_demotion_of_category_with_children(): void
     {

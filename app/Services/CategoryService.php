@@ -53,12 +53,22 @@ class CategoryService
     public function update(Category $category, array $data): Category
     {
         return DB::transaction(function () use ($category, $data) {
-            $target = Category::whereKey($category->id)->lockForUpdate()->firstOrFail();
-
-            $parent = null;
+            // 锁序:目标与候选父的 id 升序加锁(先小后大),并发交叉更新也不会死锁
             $parentId = $data['parent_id'] ?? $category->parent_id;
-            if ($parentId !== null) {
-                $parent = Category::whereKey($parentId)->lockForUpdate()->firstOrFail();
+            $lockIds = array_values(array_unique(array_filter(
+                [$category->id, $parentId],
+                fn ($id) => $id !== null,
+            )));
+            sort($lockIds, SORT_NUMERIC);
+
+            $locked = [];
+            foreach ($lockIds as $id) {
+                $locked[$id] = Category::whereKey($id)->lockForUpdate()->firstOrFail();
+            }
+
+            $target = $locked[$category->id];
+            $parent = $parentId !== null ? $locked[$parentId] : null;
+            if ($parent !== null) {
                 $this->assertParentEligible($parent, $target);
             }
 

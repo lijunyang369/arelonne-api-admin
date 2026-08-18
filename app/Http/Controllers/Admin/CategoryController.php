@@ -24,9 +24,13 @@ class CategoryController extends Controller
     {
         $request->validate(['status' => 'sometimes|in:active,all']);
 
-        $query = Category::with('children')->orderBy('sort')->orderBy('id');
-        if ($request->get('status', 'active') !== 'all') {
-            $query->where('status', 'active');
+        $query = Category::query()->orderBy('sort')->orderBy('id');
+        if ($request->get('status', 'active') === 'all') {
+            $query->with('children');
+        } else {
+            // active 模式:根与子分类都过滤,避免 inactive 子分类漏入商品表单选择器
+            $query->where('status', 'active')
+                ->with(['children' => fn ($q) => $q->where('status', 'active')]);
         }
 
         // 树形:parent_id=null 为根

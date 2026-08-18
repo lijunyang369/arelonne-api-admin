@@ -132,4 +132,26 @@ class CategoryCrudTest extends TestCase
         ]);
         $res->assertUnprocessable()->assertJsonValidationErrors('sort');
     }
+
+    /** index:active 模式(默认)过滤 inactive 子分类,树只含 active */
+    public function test_index_active_mode_filters_inactive_children(): void
+    {
+        $root = Category::factory()->create(['parent_id' => null, 'status' => 'active']);
+        Category::factory()->create(['parent_id' => $root->id, 'status' => 'inactive']);
+
+        $res = $this->getJson('/api/admin/categories');
+        $res->assertOk()->assertJsonPath('data.0.id', $root->id)
+            ->assertJsonCount(0, 'data.0.children');
+    }
+
+    /** index:status=all 返回全部(含 inactive 根与子) */
+    public function test_index_all_mode_includes_inactive(): void
+    {
+        $root = Category::factory()->create(['parent_id' => null, 'status' => 'inactive']);
+        Category::factory()->create(['parent_id' => $root->id, 'status' => 'inactive']);
+
+        $res = $this->getJson('/api/admin/categories?status=all');
+        $res->assertOk()->assertJsonPath('data.0.id', $root->id)
+            ->assertJsonCount(1, 'data.0.children');
+    }
 }

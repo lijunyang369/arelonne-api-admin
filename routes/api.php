@@ -22,5 +22,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
         Route::get('settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
         Route::put('settings', [\App\Http\Controllers\Admin\SettingController::class, 'update']);
+        Route::post('uploads/presign', [\App\Http\Controllers\Admin\UploadController::class, 'presign']);
+        Route::post('uploads/confirm', [\App\Http\Controllers\Admin\UploadController::class, 'confirm']);
+        Route::put('uploads/dev-put', [\App\Http\Controllers\Admin\UploadController::class, 'devPut'])
+            ->middleware('signed')
+            ->name('uploads.dev-put');
     });
 });

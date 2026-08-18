@@ -3,9 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
-use App\Services\SyncService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
@@ -17,7 +15,7 @@ use Symfony\Component\Process\Process;
  *   1. 调用 Shopify .json API 获取 variant / image 数据
  *   2. 通过 variant_ids 把图片映射到对应颜色
  *   3. variant_ids=[] 的图片 → Codex 视觉分析确定颜色
- *   4. 下载图片、写入 SKC + product_images、推送到 Store
+ *   4. 下载图片到暂存区、写 manifest.json（DB 写入与 Store 推送由 sync:publish-images 负责）
  *
  * 用法：
  *   php artisan sync:product-images https://oglmove.com/products/halter-neck-banded-hem-bra-tank-bra-top 6
@@ -41,6 +39,9 @@ class SyncProductImages extends Command
     {
         $url       = $this->argument('url');
         $productId = (int) $this->argument('productId');
+
+        // 每次同步生成新发布 ID → 重导入天然版本化（旧版本由 publish 回收）
+        $pid = Str::lower(Str::random(8));
 
         // 1. 查找本地商品
         $product = Product::findOrFail($productId);
@@ -151,18 +152,16 @@ class SyncProductImages extends Command
             }
         }
 
-        // 6. 确保图片根目录存在
-        $baseDir = base_path('../web-store/public/images/products/' . $product->slug);
+        // 6. 确保暂存区图片根目录存在（结构与最终 key 同构）
+        $baseDir = config('image.staging_root') . "/images/products/{$product->slug}/{$pid}";
         if (! is_dir($baseDir) && ! mkdir($baseDir, 0755, true) && ! is_dir($baseDir)) {
             $this->error("无法创建图片根目录: {$baseDir}");
             return self::FAILURE;
         }
 
-        // 7. 写入 SKC + 下载图片（事务保护：先下载全部 → 再原子替换 DB 记录）
-        $skcCreated = 0;
-        $skcUpdated = 0;
-        $imgTotal   = 0;
-        $imgFailed  = 0;
+        // 7. 下载图片到暂存区 + 写 manifest（对象先行：DB 写入与 Store 推送由 publish 命令负责）
+        $skcsManifest = [];
+        $imgFailed    = 0;
 
         foreach ($colorImages as $color => $images) {
             $skcSlug = $product->id . '-' . $product->slug . '-' . Str::slug($color);
@@ -189,110 +188,65 @@ class SyncProductImages extends Command
                 ];
             }
 
-            // 没有成功下载的图片 → 保留旧数据，跳过此 SKC
+            // 没有成功下载的图片 → 跳过此 SKC（不进 manifest）
             if (empty($downloaded)) {
-                $this->line("  ! SKC: {$color} — 所有图片下载失败，保留旧数据");
+                $this->line("  ! SKC: {$color} — 所有图片下载失败，跳过");
                 continue;
             }
 
-            // 事务内：原子替换 DB 记录
-            DB::transaction(function () use (
-                $product, $color, $skcSlug, $downloaded,
-                &$skcCreated, &$skcUpdated, &$imgTotal
-            ) {
-                $skc = $product->skcs()->updateOrCreate(
-                    ['product_id' => $product->id, 'color' => $color],
-                    [
-                        'slug'      => $skcSlug,
-                        'color_hex' => $this->guessHex($color),
-                        'status'    => 'active',
-                    ]
-                );
-
-                if ($skc->wasRecentlyCreated) {
-                    $skcCreated++;
-                    $this->line("  + SKC: {$color}");
-                } else {
-                    $skcUpdated++;
-                    $this->line("  ~ SKC: {$color}");
-                }
-
-                $skc->images()->delete();
-                foreach ($downloaded as $d) {
-                    $product->images()->create([
-                        'product_skc_id' => $skc->id,
-                        'url'            => $d['path'],
-                        'alt'            => $d['alt'],
-                        'sort'           => $d['sort'],
-                        'is_primary'     => $d['is_primary'],
-                    ]);
-                    $imgTotal++;
-                    $this->line("    📷 {$d['path']}");
-                }
-            });
+            $skcsManifest[] = [
+                'color'     => $color,
+                'color_hex' => $this->guessHex($color),
+                'slug'      => $skcSlug,
+                'images'    => collect($downloaded)->map(fn ($d) => [
+                    'file'       => basename($d['path']),
+                    'alt'        => $d['alt'],
+                    'sort'       => $d['sort'],
+                    'is_primary' => $d['is_primary'],
+                ])->all(),
+            ];
         }
 
         // 清理 Codex 临时目录中已被 move 的残余文件
         $this->cleanupTempDir(storage_path('app/temp/skc-analyze'));
 
-        $this->info("SKC: {$skcCreated} 新增, {$skcUpdated} 更新");
-        $this->info("图片: {$imgTotal} 张" . ($imgFailed > 0 ? "，{$imgFailed} 张下载失败" : ''));
-
-        // 8. 推送 Store
-        if ($imgTotal === 0) {
-            $this->warn('没有成功下载的图片，跳过 Store 推送。');
+        if (empty($skcsManifest)) {
+            $this->warn('没有成功下载的图片，未写 manifest。');
             return self::SUCCESS;
         }
 
-        $this->info('推送至 Store...');
+        $this->info('SKC: ' . count($skcsManifest) . ' 个' . ($imgFailed > 0 ? "，{$imgFailed} 张下载失败" : ''));
 
-        $skcsData = $product->skcs()->with('images')->get()->map(fn ($skc) => [
-            'id'        => $skc->id,
-            'color'     => $skc->color,
-            'color_hex' => $skc->color_hex,
-            'slug'      => $skc->slug,
-            'status'    => $skc->status,
-            'sort'      => $skc->sort,
-            'images'    => $skc->images->map(fn ($img) => [
-                'id'         => $img->id,
-                'url'        => $img->url,
-                'alt'        => $img->alt,
-                'sort'       => $img->sort,
-                'is_primary' => $img->is_primary,
-            ])->toArray(),
-        ])->toArray();
-
-        $pushed = SyncService::push(
-            "/products/{$product->id}/skcs",
-            [
-                'product_id' => $product->id,
-                'skcs'       => $skcsData,
-            ]
-        );
-
-        if (! $pushed) {
-            $this->error('推送 Store 失败！请检查 Store 服务状态和日志。');
+        // 原子写 manifest（临时文件 + rename + 结果检查；publish 命令的输入：对象先行，DB 后行）
+        $manifest = [
+            'product_id' => $product->id,
+            'slug'       => $product->slug,
+            'pid'        => $pid,
+            'skcs'       => $skcsManifest,
+        ];
+        $manifestPath = "{$baseDir}/manifest.json";
+        $manifestTmp = $manifestPath . '.tmp';
+        try {
+            $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            $this->error("manifest 序列化失败: {$e->getMessage()}");
+            return self::FAILURE;
+        }
+        if (file_put_contents($manifestTmp, $json) === false || ! rename($manifestTmp, $manifestPath)) {
+            @unlink($manifestTmp);
+            $this->error("manifest 写入失败: {$manifestPath}");
             return self::FAILURE;
         }
 
-        // 9. 设置主色 SKC（push 后执行，避免 FK cascade null）
-        $primaryColor = $this->knownColors[0] ?? null;
-        if ($primaryColor) {
-            $primarySkc = $product->skcs()->where('color', $primaryColor)->first();
-            if ($primarySkc) {
-                $product->update(['primary_skc_id' => $primarySkc->id]);
-                $this->line("主色: {$primaryColor} (SKC #{$primarySkc->id})");
-            }
-        }
+        $this->info('完成下载与 manifest 写入。下一步：Codex 后处理 → sync:publish-images');
 
-        // 9. 可选：Codex imagegen 后处理
+        // 8. 可选：Codex imagegen 后处理
         if ($this->option('with-imagegen')) {
             $this->call('sync:process-images', [
                 'productId' => $product->id,
             ]);
         }
 
-        $this->info('完成。');
         return self::SUCCESS;
     }
 
@@ -475,9 +429,10 @@ PROMPT;
         $filename = sprintf('%s-%02d.%s', $skcSlug, $index + 1, $ext);
         $filePath = "{$dir}/{$filename}";
 
-        // 本地路径原样返回
+        // 已是本站路径（重复导入场景）：仅当暂存区存在对应文件时原样返回
         if (str_starts_with($url, '/images/') || str_starts_with($url, 'http://localhost')) {
-            return $url;
+            $stagingPath = config('image.staging_root') . parse_url($url, PHP_URL_PATH);
+            return file_exists($stagingPath) ? $url : null;
         }
 
         // 已存在则跳过下载
@@ -509,13 +464,13 @@ PROMPT;
     }
 
     /**
-     * 将绝对路径转为前端可访问的 web 相对路径。
+     * 将暂存区绝对路径转为最终相对路径（与 S3 key 同构）。
      */
     private function webRelativePath(string $absolutePath): string
     {
-        $publicDir = base_path('../web-store/public');
-        if (str_starts_with($absolutePath, $publicDir)) {
-            return substr($absolutePath, strlen($publicDir));
+        $stagingRoot = (string) config('image.staging_root');
+        if (str_starts_with($absolutePath, $stagingRoot)) {
+            return substr($absolutePath, strlen($stagingRoot));
         }
         return $absolutePath;
     }

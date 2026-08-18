@@ -21,27 +21,46 @@ class ProcessProductImages extends Command
         $productId = (int) $this->argument('productId');
         $product = Product::findOrFail($productId);
 
-        $publicDir = base_path('../web-store/public');
-        $images = $product->images()->whereNotNull('product_skc_id')->get();
+        $stagingRoot = (string) config('image.staging_root');
+        $manifests = glob("{$stagingRoot}/images/products/{$product->slug}/*/manifest.json") ?: [];
 
-        if ($images->isEmpty()) {
-            $this->warn('无图片。');
+        if (count($manifests) === 0) {
+            $this->warn("无待处理 manifest（先跑 sync:product-images）。");
+            return self::SUCCESS;
+        }
+        if (count($manifests) > 1) {
+            $this->error('该商品有多个 manifest，无法确定处理目标，请清理暂存区。');
+            foreach ($manifests as $m) {
+                $this->line("  {$m}");
+            }
+            return self::FAILURE;
+        }
+
+        $manifestPath = $manifests[0];
+        $data = json_decode((string) file_get_contents($manifestPath), true);
+        $stagingDir = dirname($manifestPath);
+
+        // 由 manifest 字段构造清单（不再读 DB）
+        $images = [];
+        foreach ($data['skcs'] ?? [] as $skc) {
+            foreach ($skc['images'] ?? [] as $img) {
+                $images[] = "{$stagingDir}/{$skc['slug']}/{$img['file']}";
+            }
+        }
+
+        if (empty($images)) {
+            $this->warn('manifest 中无图片。');
             return self::SUCCESS;
         }
 
-        $this->info("商品 #{$product->id} {$product->name} — {$images->count()} 张图片");
-
-        $manifest = [];
-        foreach ($images as $img) {
-            $manifest[] = $publicDir . $img->url;
-        }
+        $this->info("商品 #{$product->id} {$product->name} — " . count($images) . ' 张图片');
 
         $manifestFile = storage_path("app/temp/imagegen-manifest-{$product->id}.json");
         file_put_contents($manifestFile, json_encode([
             'product_id'   => $product->id,
             'product_name' => $product->name,
             'face_ref'     => '/var/www/arelonne/docs/references/oglmove/arelonne-face-source-aligned-v1.png',
-            'images'       => $manifest,
+            'images'       => $images,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         $this->line("清单: {$manifestFile}");

@@ -31,6 +31,7 @@ class ProductResource extends JsonResource
             'meta'        => $this->meta,
             'variants'    => VariantResource::collection($this->whenLoaded('variants')),
             'images'      => ProductImageResource::collection($this->whenLoaded('images')),
+            'skcs'        => ProductSkcResource::collection($this->whenLoaded('skcs')),
             'created_at'  => $this->created_at?->toIso8601String(),
         ];
     }

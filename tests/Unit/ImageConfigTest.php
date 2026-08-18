@@ -6,6 +6,19 @@ use Tests\TestCase;
 
 class ImageConfigTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // 隔离宿主 .env（CI/开发者机器可能配置了真实值，默认值断言不得读取它们）
+        putenv('APP_IMAGE_BASE_URL');
+        putenv('CLOUDFRONT_DISTRIBUTION_ID');
+        putenv('IMAGE_DISK');
+        putenv('IMAGE_LOCAL_ROOT');
+        putenv('AWS_BUCKET');
+        putenv('AWS_USE_ACCELERATE_ENDPOINT');
+        $this->refreshApplication();
+    }
+
     public function test_image_磁盘默认_local_指向_web_store_public(): void
     {
         $this->assertSame('local', config('filesystems.disks.image.driver'));
@@ -27,5 +40,15 @@ class ImageConfigTest extends TestCase
     {
         $this->assertSame('', config('app.image_base_url'));
         $this->assertSame('', config('app.cloudfront_distribution_id'));
+    }
+
+    public function test_IMAGE_LOCAL_ROOT为空串时回退默认root(): void
+    {
+        putenv('IMAGE_LOCAL_ROOT=');
+        $this->refreshApplication();
+
+        // 空字符串不得覆盖默认值（env 空值回退，否则 local 盘 root 指向空路径）
+        $this->assertSame('local', config('filesystems.disks.image.driver'));
+        $this->assertStringEndsWith('/web-store/public', (string) config('filesystems.disks.image.root'));
     }
 }

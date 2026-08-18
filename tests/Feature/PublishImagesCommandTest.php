@@ -207,6 +207,95 @@ class PublishImagesCommandTest extends TestCase
         $this->assertDirectoryExists("{$this->stagingRoot}/images/products/slug-drift/abcd1234");
     }
 
+    public function test_删除颜色后重新发布同色_恢复软删SKC不撞唯一索引(): void
+    {
+        $product = Product::factory()->create(['slug' => 'skc-restore']);
+        $slug = $product->slug;
+
+        // 第一次发布 pid1：Black
+        $this->makeStagedProduct($product, 'pid00001');
+        $this->artisan('sync:publish-images', ['productId' => $product->id])->assertSuccessful();
+
+        // 第二次发布 pid2：只含 White → 4.2 把未覆盖的 Black 软删
+        $skcSlugWhite = "{$product->id}-{$slug}-white";
+        $dir2 = "{$this->stagingRoot}/images/products/{$slug}/pid00002/{$skcSlugWhite}";
+        File::ensureDirectoryExists($dir2);
+        imagejpeg(imagecreatetruecolor(2000, 1000), "{$dir2}/img-01.jpg");
+        file_put_contents("{$this->stagingRoot}/images/products/{$slug}/pid00002/manifest.json", json_encode([
+            'product_id' => $product->id,
+            'slug'       => $slug,
+            'pid'        => 'pid00002',
+            'skcs'       => [[
+                'color'     => 'White',
+                'color_hex' => '#ffffff',
+                'slug'      => $skcSlugWhite,
+                'images'    => [['file' => 'img-01.jpg', 'alt' => 'x', 'sort' => 0, 'is_primary' => true]],
+            ]],
+        ]));
+        $this->artisan('sync:publish-images', ['productId' => $product->id])->assertSuccessful();
+
+        $black = $product->skcs()->withTrashed()->where('color', 'Black')->first();
+        $this->assertNotNull($black);
+        $this->assertNotNull($black->deleted_at); // 已软删
+
+        // 第三次发布 pid3：Black 重新加入 → withTrashed updateOrCreate 恢复软删行，不撞 (product_id,color) 唯一索引
+        $skcSlugBlack = "{$product->id}-{$slug}-black";
+        $dir3 = "{$this->stagingRoot}/images/products/{$slug}/pid00003/{$skcSlugBlack}";
+        File::ensureDirectoryExists($dir3);
+        imagejpeg(imagecreatetruecolor(2000, 1000), "{$dir3}/img-01.jpg");
+        file_put_contents("{$this->stagingRoot}/images/products/{$slug}/pid00003/manifest.json", json_encode([
+            'product_id' => $product->id,
+            'slug'       => $slug,
+            'pid'        => 'pid00003',
+            'skcs'       => [[
+                'color'     => 'Black',
+                'color_hex' => '#000000',
+                'slug'      => $skcSlugBlack,
+                'images'    => [['file' => 'img-01.jpg', 'alt' => 'x', 'sort' => 0, 'is_primary' => true]],
+            ]],
+        ]));
+        $this->artisan('sync:publish-images', ['productId' => $product->id])->assertSuccessful();
+
+        // Black SKC 已恢复（deleted_at 为 null），DB 中 Black 仅一行
+        $black->refresh();
+        $this->assertNull($black->deleted_at);
+        $this->assertSame('active', $black->status);
+        $this->assertSame(1, $product->skcs()->withTrashed()->where('color', 'Black')->count());
+    }
+
+    public function test_slug变更后重发布_旧slug前缀被回收(): void
+    {
+        $product = Product::factory()->create(['slug' => 'slug-old']);
+        $this->makeStagedProduct($product, 'pid00001');
+        $this->artisan('sync:publish-images', ['productId' => $product->id])->assertSuccessful();
+        $this->assertFileExists("{$this->diskRoot}/images/products/slug-old/pid00001/1-slug-old-black/img-01.jpg");
+
+        // 商品改名 + 重新 sync（staging 用新 slug + 新 pid）
+        $product->update(['slug' => 'slug-new']);
+        $slug = $product->slug;
+        $skcSlug = "{$product->id}-{$slug}-black";
+        $dir = "{$this->stagingRoot}/images/products/{$slug}/pid00002/{$skcSlug}";
+        File::ensureDirectoryExists($dir);
+        imagejpeg(imagecreatetruecolor(2000, 1000), "{$dir}/img-01.jpg");
+        file_put_contents("{$this->stagingRoot}/images/products/{$slug}/pid00002/manifest.json", json_encode([
+            'product_id' => $product->id,
+            'slug'       => $slug,
+            'pid'        => 'pid00002',
+            'skcs'       => [[
+                'color'     => 'Black',
+                'color_hex' => '#000000',
+                'slug'      => $skcSlug,
+                'images'    => [['file' => 'img-01.jpg', 'alt' => 'x', 'sort' => 0, 'is_primary' => true]],
+            ]],
+        ]));
+
+        $this->artisan('sync:publish-images', ['productId' => $product->id])->assertSuccessful();
+
+        // 新 slug+pid 存在，旧 slug 前缀下的旧 pid 目录被回收（按旧 URL 的 slug，而非当前 slug）
+        $this->assertFileExists("{$this->diskRoot}/images/products/slug-new/pid00002/{$skcSlug}/img-01.jpg");
+        $this->assertDirectoryDoesNotExist("{$this->diskRoot}/images/products/slug-old/pid00001");
+    }
+
     public function test_多manifest_报错并跳过(): void
     {
         $product = Product::factory()->create(['slug' => 'multi-test']);

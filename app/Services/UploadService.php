@@ -76,10 +76,22 @@ class UploadService
                 'ContentType' => $mime,
             ]);
 
+            // 浏览器 PUT 不可设置 Host/Content-Length 等禁止头；只透传可设置的签名头并展平数组值
+            $headers = [];
+            foreach (($temporary['headers'] ?? []) as $name => $value) {
+                $lower = strtolower((string) $name);
+                if (in_array($lower, ['host', 'content-length'], true) || str_starts_with($lower, 'x-amz-content-sha256')) {
+                    continue;
+                }
+                $headers[(string) $name] = is_array($value) ? implode(', ', $value) : (string) $value;
+            }
+            // Content-Type 由前端 PUT 时固定携带（契约），这里确保契约字段存在
+            $headers['Content-Type'] = $mime;
+
             return [
                 'key'            => $key,
                 'upload_url'     => $temporary['url'],
-                'upload_headers' => $temporary['headers'] ?? [],
+                'upload_headers' => $headers,
                 'auth_required'  => false,
                 'expires_in'     => 600,
             ];
@@ -125,11 +137,17 @@ class UploadService
         $disk = Storage::disk('image');
         $tmp = null;
         $written = [];
+        $recoverable = false; // 可纠正错误标记（对象未到达 → 回 pending，不进 failed 分支）
 
         try {
             // 校验顺序（先省内存）：size 比对 → 下载 → getimagesize → finfo
             if (! $disk->exists($key)) {
-                throw ValidationException::withMessages(['key' => '上传对象不存在，请重新上传。']);
+                // 可纠正错误：对象可能尚未写入/最终一致不可见 → 回 pending 可重试（spec 状态机契约）
+                // 用查询构造器更新（claimProcessing 是查询级更新，模型实例的 status 内存值陈旧，
+                // 且同值属性不产生 dirty，模型 update() 不会写回 status）
+                $recoverable = true;
+                Upload::whereKey($upload->id)->update(['status' => 'pending', 'processing_at' => null, 'error' => '上传对象尚未到达']);
+                throw ValidationException::withMessages(['key' => '上传对象尚未到达，请稍后重试。']);
             }
 
             $actualSize = (int) $disk->size($key);
@@ -204,13 +222,20 @@ class UploadService
 
             return $this->resultOf($upload->refresh());
         } catch (ValidationException $e) {
-            // 确定性非法：failed + 记录错误（重试稳定返回原 422）；pending 对象保留
-            $upload->update(['status' => 'failed', 'processing_at' => null, 'error' => $e->getMessage()]);
+            // 确定性非法：failed + 记录错误（重试稳定返回原 422）；pending 对象保留。
+            // 可纠正错误（对象未到达）分支已回 pending，不再被覆写为 failed（spec 状态机契约）
+            if (! $recoverable) {
+                $upload->update(['status' => 'failed', 'processing_at' => null, 'error' => $e->getMessage()]);
+            }
             throw $e;
         } catch (\Throwable $e) {
             // 运行类错误：回滚本次已写对象、回 pending（保留 pending 源对象）
             foreach ($written as $p) {
-                try { $disk->delete($p); } catch (\Throwable) {}
+                try {
+                    if (! $disk->delete($p)) {
+                        Log::warning("回滚删除失败（返回 false）: {$p}");
+                    }
+                } catch (\Throwable) {}
             }
             $upload->update(['status' => 'pending', 'processing_at' => null, 'error' => $e->getMessage()]);
             Log::error('确认上传失败: ' . $e->getMessage(), ['key' => $key]);

@@ -241,6 +241,26 @@ class UploadEndpointTest extends TestCase
         $this->assertTrue($record->processing_at->greaterThanOrEqualTo(now()->subMinute()));
     }
 
+    public function test_confirm_对象未到达_回pending可重试(): void
+    {
+        $this->auth();
+
+        // pending 记录但磁盘无对象 → 422 且状态回 pending（可纠正错误，非 failed）
+        $key = $this->pendingUpload();
+        $this->postJson('/api/admin/uploads/confirm', ['key' => $key])->assertStatus(422);
+        $this->assertDatabaseHas('uploads', ['key' => $key, 'status' => 'pending']);
+
+        // 对象到达后再 confirm → 成功
+        $tmp = $this->makeJpeg(800, 600);
+        $size = filesize($tmp);
+        Storage::disk('image')->put($key, (string) file_get_contents($tmp));
+        @unlink($tmp);
+        Upload::where('key', $key)->update(['size' => $size]);
+
+        $this->postJson('/api/admin/uploads/confirm', ['key' => $key])->assertStatus(200);
+        $this->assertDatabaseHas('uploads', ['key' => $key, 'status' => 'confirmed']);
+    }
+
     public function test_新抢占比旧的不可被立即抢占(): void
     {
         $this->auth();

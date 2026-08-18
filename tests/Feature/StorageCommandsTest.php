@@ -76,6 +76,48 @@ class StorageCommandsTest extends TestCase
         @unlink($manifest);
     }
 
+    public function test_manifest非法条目_拒绝且失败(): void
+    {
+        $fakePublic = storage_path('app/fake-public-' . bin2hex(random_bytes(6)));
+        File::ensureDirectoryExists("{$fakePublic}/brand");
+        file_put_contents("{$fakePublic}/brand/logo.svg", '<svg></svg>');
+
+        $manifest = storage_path('app/fake-manifest-' . bin2hex(random_bytes(6)) . '.json');
+        file_put_contents($manifest, json_encode(['entries' => ['../evil']]));
+
+        // fail-closed：穿越条目被拒 → FAILURE 且不写盘
+        $this->artisan('storage:sync-public-to-s3', [
+            'publicRoot' => $fakePublic,
+            '--manifest' => $manifest,
+        ])->assertFailed();
+
+        $this->assertFileDoesNotExist("{$this->diskRoot}/brand/logo.svg");
+
+        File::deleteDirectory($fakePublic);
+        @unlink($manifest);
+    }
+
+    public function test_manifest含受保护前缀祖先目录_拒绝且products无写入(): void
+    {
+        $fakePublic = storage_path('app/fake-public-' . bin2hex(random_bytes(6)));
+        File::ensureDirectoryExists("{$fakePublic}/images/products/fake-slug");
+        file_put_contents("{$fakePublic}/images/products/fake-slug/x.jpg", 'fake');
+
+        $manifest = storage_path('app/fake-manifest-' . bin2hex(random_bytes(6)) . '.json');
+        file_put_contents($manifest, json_encode(['entries' => ['images']]));
+
+        // fail-closed：images 是受保护前缀 images/products 的祖先目录 → 拒绝 + FAILURE，products 下无写入
+        $this->artisan('storage:sync-public-to-s3', [
+            'publicRoot' => $fakePublic,
+            '--manifest' => $manifest,
+        ])->assertFailed();
+
+        $this->assertFileDoesNotExist("{$this->diskRoot}/images/products/fake-slug/x.jpg");
+
+        File::deleteDirectory($fakePublic);
+        @unlink($manifest);
+    }
+
     public function test_manifest缺失_命令失败(): void
     {
         $this->artisan('storage:sync-public-to-s3', [

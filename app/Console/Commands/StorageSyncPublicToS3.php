@@ -51,6 +51,22 @@ class StorageSyncPublicToS3 extends Command
         $invalidPaths = [];
 
         foreach ($entries as $entry) {
+            // fail-closed：拒绝绝对路径/含 .. 的穿越条目/非字符串/空条目（镜像部署脚本同款校验）
+            if (! is_string($entry) || $entry === '' || str_starts_with($entry, '/') || str_contains($entry, '..')) {
+                $this->error("  拒绝非法条目: " . var_export($entry, true));
+                $errors++;
+                continue;
+            }
+
+            // 拒绝受保护前缀的祖先目录（如 images/uploads 本身）——防整目录覆盖破坏管线独占区
+            foreach (['images/products', 'uploads'] as $protected) {
+                if ($entry === $protected || str_starts_with($protected, $entry . '/')) {
+                    $this->error("  拒绝受保护前缀或其祖先目录: {$entry}");
+                    $errors++;
+                    continue 2;
+                }
+            }
+
             // 强排除（fail-closed）：商品图由 api-admin 管线独占，manifest 误含 = 错误
             if (str_starts_with($entry, 'images/products')) {
                 $this->error("  拒绝同步（管线独占）: {$entry}");

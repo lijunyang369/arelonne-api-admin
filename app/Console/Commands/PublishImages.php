@@ -198,7 +198,11 @@ class PublishImages extends Command
                         // 回滚保护（与 rollbackPublished 同语义）：重跑场景 DB 已引用对象绝不删
                         $imgPid = $this->pidFromUrl('/' . ltrim($p, '/'));
                         if ($imgPid === null || ! in_array($imgPid, $dbPidsBefore, true)) {
-                            try { $disk->delete($p); } catch (\Throwable) {}
+                            try {
+                                if (! $disk->delete($p)) {
+                                    Log::warning("回滚删除失败（返回 false）: {$p}");
+                                }
+                            } catch (\Throwable) {}
                         }
                         $published = array_values(array_filter($published, fn ($x) => $x !== $p));
                     }
@@ -224,6 +228,7 @@ class PublishImages extends Command
         // 4. DB 事务：完整快照替换
         $oldUrls = $product->images()->pluck('url')->all();
 
+        try {
         DB::transaction(function () use ($product, $data) {
             // 4.1 全删旧图片
             $product->images()->delete();
@@ -237,14 +242,18 @@ class PublishImages extends Command
                 if (empty($skc['images'])) {
                     continue;
                 }
-                $model = $product->skcs()->updateOrCreate(
+                $model = $product->skcs()->withTrashed()->updateOrCreate(
                     ['product_id' => $product->id, 'color' => $skc['color']],
                     [
                         'slug'      => $skc['slug'],
                         'color_hex' => $skc['color_hex'],
                         'status'    => 'active',
+                        'deleted_at' => null,
                     ]
                 );
+                if ($model->trashed()) {
+                    $model->restore();
+                }
                 foreach ($skc['images'] as $imgData) {
                     $product->images()->create([
                         'product_skc_id' => $model->id,
@@ -265,21 +274,33 @@ class PublishImages extends Command
                 }
             }
         });
+        } catch (\Throwable $e) {
+            // DB 事务失败（DB 已回滚，仍属暴露前失败）：按 dbPidsBefore 保护规则清理本次对象，保留 staging
+            $this->rollbackPublished($disk, $published, $dbPidsBefore);
+            $this->error("DB 快照替换失败（已回滚本次对象，staging 保留）: {$e->getMessage()}");
+            return self::FAILURE;
+        }
 
-        // 5. 回收旧 pid 对象（deleteDirectory 返回值校验，失败记日志不阻塞）
+        // 5. 回收旧 pid 对象（按旧 URL 的 slug，可能已与当前 slug 不同；deleteDirectory 返回值校验）
         $newPid = (string) $data['pid'];
         collect($oldUrls)
-            ->map(fn (string $url) => $this->pidFromUrl($url))
+            ->map(fn (string $url) => $this->productPrefixFromUrl($url))
             ->unique()
-            ->filter(fn (?string $pid) => $pid !== null && $pid !== $newPid)
-            ->each(function (string $pid) use ($disk, $product) {
-                $prefix = "images/products/{$product->slug}/{$pid}";
+            ->filter(function (?string $prefix) use ($newPid) {
+                if ($prefix === null) {
+                    return false;
+                }
+                // 排除本次新 pid 的前缀
+                return ! str_ends_with($prefix, '/' . $newPid);
+            })
+            ->each(function (string $prefix) use ($disk) {
+                $path = ltrim($prefix, '/');
                 try {
-                    if (! $disk->deleteDirectory($prefix)) {
-                        Log::warning("旧版本回收失败（返回 false）: {$prefix}");
+                    if (! $disk->deleteDirectory($path)) {
+                        Log::warning("旧版本回收失败（返回 false）: {$path}");
                     }
                 } catch (\Throwable $e) {
-                    Log::warning("旧版本回收异常: {$prefix} — {$e->getMessage()}");
+                    Log::warning("旧版本回收异常: {$path} — {$e->getMessage()}");
                 }
             });
 
@@ -349,7 +370,11 @@ class PublishImages extends Command
             if ($pid !== null && in_array($pid, $protectedPids, true)) {
                 continue;
             }
-            try { $disk->delete($p); } catch (\Throwable) {}
+            try {
+                if (! $disk->delete($p)) {
+                    Log::warning("回滚删除失败（返回 false）: {$p}");
+                }
+            } catch (\Throwable) {}
         }
     }
 
@@ -369,6 +394,14 @@ class PublishImages extends Command
     private function pidFromUrl(string $url): ?string
     {
         return preg_match('#^/images/products/[^/]+/([a-z0-9]{8})/#', $url, $m) ? $m[1] : null;
+    }
+
+    /**
+     * 从旧 url 提取完整对象前缀：/images/products/<slug>/<pid>（回收用，sluq 可能已变更）。
+     */
+    private function productPrefixFromUrl(string $url): ?string
+    {
+        return preg_match('#^(/images/products/[^/]+/[a-z0-9]{8})/#', $url, $m) ? $m[1] : null;
     }
 
     /**
